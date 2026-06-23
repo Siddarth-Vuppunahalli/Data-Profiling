@@ -1,0 +1,20 @@
+database:
+  schema: public
+
+sampling:
+  mode: sampled
+  sample_rows: 50000
+
+thresholds:
+  wide_table_columns: 75
+  max_normalized_collision_rate: 0.02
+  min_join_match_rate: 0.95
+  min_affix_frequency: 0.10
+
+history:
+  path: state/profile_history.jsonl
+
+ydata:
+  include_raw: false
+  explorative: true
+
