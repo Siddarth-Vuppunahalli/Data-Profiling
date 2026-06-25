@@ -8,6 +8,7 @@ import pandas as pd
 
 from . import __version__
 from .config import ProfilingConfig
+from .features.case_profile import profile_table_case_conventions
 from .output import empty_profile_document
 from .ydata_profile import YDataProfiler
 
@@ -47,6 +48,9 @@ def build_profile(
             "sample_count": int(len(frame)),
             "column_count": int(len(frame.columns)),
             "columns": _column_metadata(frame),
+            "custom_profiles": {
+                "case_profile": profile_table_case_conventions(frame),
+            },
             "ydata_profile": profiler.profile_dataframe(table_name, frame),
         }
 
@@ -71,4 +75,3 @@ def _redact_url(url: str | None) -> str | None:
     scheme_and_auth, host = url.rsplit("@", 1)
     scheme = scheme_and_auth.split("://", 1)[0] if "://" in scheme_and_auth else "database"
     return f"{scheme}://***@{host}"
-
