@@ -10,6 +10,7 @@ from . import __version__
 from .config import ProfilingConfig
 from .features.case_profile import profile_table_case_conventions
 from .features.format_profile import profile_table_format_patterns
+from .features.normalized_join_profile import profile_normalized_join_compatibility
 from .output import empty_profile_document
 from .ydata_profile import YDataProfiler
 
@@ -58,6 +59,12 @@ def build_profile(
             },
             "ydata_profile": profiler.profile_dataframe(table_name, frame),
         }
+
+    document["relationships"]["normalized_join_candidates"] = profile_normalized_join_compatibility(
+        tables,
+        max_collision_rate=config.thresholds.max_normalized_collision_rate,
+        min_match_rate=config.thresholds.min_join_match_rate,
+    )
 
     return document
 
