@@ -9,6 +9,7 @@ import pandas as pd
 from . import __version__
 from .config import ProfilingConfig
 from .features.case_profile import profile_table_case_conventions
+from .features.format_profile import profile_table_format_patterns
 from .output import empty_profile_document
 from .ydata_profile import YDataProfiler
 
@@ -50,6 +51,10 @@ def build_profile(
             "columns": _column_metadata(frame),
             "custom_profiles": {
                 "case_profile": profile_table_case_conventions(frame),
+                "format_profile": profile_table_format_patterns(
+                    frame,
+                    min_affix_frequency=config.thresholds.min_affix_frequency,
+                ),
             },
             "ydata_profile": profiler.profile_dataframe(table_name, frame),
         }
