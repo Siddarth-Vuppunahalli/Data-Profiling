@@ -40,13 +40,34 @@ def test_profile_relationship_candidate_reports_fk_metrics() -> None:
     assert candidate["child_null_percentage"] == 0.2
     assert candidate["child_to_parent_match_rate"] == 0.75
     assert candidate["orphan_child_count"] == 1
+    assert candidate["orphan_child_row_count"] == 1
+    assert candidate["orphan_child_distinct_count"] == 1
     assert candidate["orphan_child_percentage"] == 0.25
     assert candidate["data_type_compatibility"] == "compatible"
     assert candidate["pattern_compatibility"] == "compatible"
     assert candidate["raw_coverage"] == 0.75
     assert candidate["normalized_coverage"] == 0.75
     assert candidate["inferred_cardinality"] == "1:N"
-    assert candidate["relationship_confidence"] == 0.785
+    assert candidate["relationship_confidence"] == 0.9
+
+
+def test_profile_relationship_candidate_reports_orphan_rows_and_distinct_orphans() -> None:
+    customers = pd.Series(["C001", "C002"], name="customer_id")
+    orders = pd.Series(["C001", "MISSING", "MISSING", "UNKNOWN"], name="customer_id")
+
+    candidate = profile_relationship_candidate(
+        parent_table="customers",
+        parent_column="customer_id",
+        parent_values=customers,
+        child_table="orders",
+        child_column="customer_id",
+        child_values=orders,
+    )
+
+    assert candidate["orphan_child_count"] == 3
+    assert candidate["orphan_child_row_count"] == 3
+    assert candidate["orphan_child_distinct_count"] == 2
+    assert candidate["orphan_child_percentage"] == 0.75
 
 
 def test_profile_relationship_candidate_uses_normalized_coverage() -> None:
@@ -65,7 +86,7 @@ def test_profile_relationship_candidate_uses_normalized_coverage() -> None:
     assert candidate["raw_coverage"] == 0.0
     assert candidate["normalized_coverage"] == 1.0
     assert candidate["child_to_parent_match_rate"] == 0.0
-    assert candidate["relationship_confidence"] == 0.725
+    assert candidate["relationship_confidence"] == 0.8
 
 
 def test_profile_inferred_foreign_keys_excludes_low_cardinality_status_columns() -> None:
@@ -94,6 +115,52 @@ def test_profile_inferred_foreign_keys_excludes_low_cardinality_status_columns()
         "compatible_data_type",
         "sufficient_cardinality",
     ]
+
+
+def test_profile_inferred_foreign_keys_detects_id_to_table_id_pattern() -> None:
+    tables = {
+        "customers": pd.DataFrame(
+            {
+                "id": ["C001", "C002", "C003"],
+                "name": ["Ada", "Grace", "Katherine"],
+            }
+        ),
+        "orders": pd.DataFrame(
+            {
+                "order_id": ["O001", "O002", "O003"],
+                "customer_id": ["C001", "C002", "C001"],
+            }
+        ),
+    }
+
+    candidates = profile_inferred_foreign_keys(tables, min_confidence=0.50)
+
+    assert len(candidates) == 1
+    assert candidates[0]["parent_table"] == "customers"
+    assert candidates[0]["parent_column"] == "id"
+    assert candidates[0]["child_table"] == "orders"
+    assert candidates[0]["child_column"] == "customer_id"
+    assert candidates[0]["candidate_filter_reasons"] == [
+        "compatible_column_name",
+        "compatible_data_type",
+        "sufficient_cardinality",
+    ]
+
+
+def test_profile_relationship_candidate_confidence_uses_zero_to_one_scale() -> None:
+    parent = pd.Series(["C001", "C002"], name="customer_id")
+    child = pd.Series(["C001", "C002"], name="customer_id")
+
+    candidate = profile_relationship_candidate(
+        parent_table="customers",
+        parent_column="customer_id",
+        parent_values=parent,
+        child_table="orders",
+        child_column="customer_id",
+        child_values=child,
+    )
+
+    assert candidate["relationship_confidence"] == 1.0
 
 
 def test_profile_inferred_foreign_keys_requires_evidence_beyond_similar_names() -> None:

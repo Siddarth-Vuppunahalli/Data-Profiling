@@ -19,7 +19,7 @@ def profile_inferred_foreign_keys(
     for left_table, right_table in combinations(sorted(tables), 2):
         left_frame = tables[left_table]
         right_frame = tables[right_table]
-        for left_column, right_column in _candidate_column_pairs(left_frame, right_frame):
+        for left_column, right_column in _candidate_column_pairs(left_table, left_frame, right_table, right_frame):
             parent_table, parent_column, parent_values, child_table, child_column, child_values = _orient_parent_child(
                 left_table,
                 left_column,
@@ -62,6 +62,8 @@ def profile_relationship_candidate(
     raw_matches = sum(1 for value in child_strings if value in parent_set)
     normalized_matches = sum(1 for value in normalized_child_strings if value in normalized_parent_set)
     orphan_values = [value for value in child_strings if value not in parent_set]
+    orphan_row_count = len(orphan_values)
+    orphan_distinct_count = len(set(orphan_values))
     parent_uniqueness = _uniqueness_ratio(parent_values)
     raw_coverage = _percentage(raw_matches, len(child_strings))
     normalized_coverage = _percentage(normalized_matches, len(child_strings))
@@ -85,8 +87,10 @@ def profile_relationship_candidate(
         "parent_null_percentage": _null_percentage(parent_values),
         "child_null_percentage": _null_percentage(child_values),
         "child_to_parent_match_rate": raw_coverage,
-        "orphan_child_count": len(set(orphan_values)),
-        "orphan_child_percentage": _percentage(len(set(orphan_values)), len(child_strings)),
+        "orphan_child_count": orphan_row_count,
+        "orphan_child_row_count": orphan_row_count,
+        "orphan_child_distinct_count": orphan_distinct_count,
+        "orphan_child_percentage": _percentage(orphan_row_count, len(child_strings)),
         "data_type_compatibility": type_compatibility,
         "pattern_compatibility": pattern_compatibility,
         "raw_coverage": raw_coverage,
@@ -102,11 +106,16 @@ def profile_relationship_candidate(
     }
 
 
-def _candidate_column_pairs(left_frame: pd.DataFrame, right_frame: pd.DataFrame) -> list[tuple[str, str]]:
+def _candidate_column_pairs(
+    left_table: str,
+    left_frame: pd.DataFrame,
+    right_table: str,
+    right_frame: pd.DataFrame,
+) -> list[tuple[str, str]]:
     pairs = []
     for left_column in left_frame.columns:
         for right_column in right_frame.columns:
-            if not _compatible_column_names(left_column, right_column):
+            if not _compatible_column_names(left_table, left_column, right_table, right_column):
                 continue
             if not _data_types_can_match(left_frame[left_column], right_frame[right_column]):
                 continue
@@ -131,16 +140,33 @@ def _orient_parent_child(
     return left_table, left_column, left_values, right_table, right_column, right_values
 
 
-def _compatible_column_names(left_column: str, right_column: str) -> bool:
+def _compatible_column_names(left_table: str, left_column: str, right_table: str, right_column: str) -> bool:
     left = _normalize_column_name(left_column)
     right = _normalize_column_name(right_column)
-    if left != right:
-        return False
-    return any(token in left.split("_") for token in JOIN_NAME_TOKENS)
+    if left == right:
+        return any(token in left.split("_") for token in JOIN_NAME_TOKENS)
+
+    left_table_stem = _table_name_stem(left_table)
+    right_table_stem = _table_name_stem(right_table)
+    return (
+        left == "id"
+        and right == f"{left_table_stem}_id"
+        or right == "id"
+        and left == f"{right_table_stem}_id"
+    )
 
 
 def _normalize_column_name(column: str) -> str:
     return re.sub(r"[^a-zA-Z0-9]+", "_", column.strip().casefold()).strip("_")
+
+
+def _table_name_stem(table_name: str) -> str:
+    normalized = _normalize_column_name(table_name)
+    if normalized.endswith("ies"):
+        return f"{normalized[:-3]}y"
+    if normalized.endswith("s") and len(normalized) > 1:
+        return normalized[:-1]
+    return normalized
 
 
 def _data_types_can_match(left_values: pd.Series, right_values: pd.Series) -> bool:
@@ -221,13 +247,7 @@ def _relationship_confidence(
 ) -> float:
     type_score = 1.0 if data_type_compatibility == "compatible" else 0.0
     pattern_score = 1.0 if pattern_compatibility == "compatible" else 0.0
-    score = (
-        0.35 * parent_uniqueness
-        + 0.14 * raw_coverage
-        + 0.18 * normalized_coverage
-        + 0.10 * type_score
-        + 0.095 * pattern_score
-    )
+    score = 0.35 * parent_uniqueness + 0.20 * raw_coverage + 0.20 * normalized_coverage + 0.15 * type_score + 0.10 * pattern_score
     return round(score, 3)
 
 
